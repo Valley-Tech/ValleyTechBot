@@ -2,7 +2,6 @@ node_modules/
 .env
 priv.pem
 pub.pem
-README.md
 public_key.pem
 private_key.pem
 private_key_pkcs8.pem
