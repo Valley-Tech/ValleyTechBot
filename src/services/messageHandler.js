@@ -61,6 +61,9 @@ class MessageHandler {
   return (
     lower.includes('que') ||
     lower.includes('qué') ||
+    lower.includes('quiero') ||
+    lower.includes('quisiera') ||
+    lower.includes('necesito') ||
     lower.includes('quien') ||
     lower.includes('quién') ||
     lower.includes('cual') ||
