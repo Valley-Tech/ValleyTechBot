@@ -550,8 +550,8 @@ Para confirmar escribe "*Sí*"`;
       },
       phones: [
         {
-          phone: "+573134315692",
-          wa_id: "573134315692",
+          phone: "+573161763710",
+          wa_id: "573161763710",
           type: "WORK"
         }
       ],
