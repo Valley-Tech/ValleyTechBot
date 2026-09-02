@@ -17,7 +17,7 @@ class MessageHandler {
   async handleIncomingMessage(message, senderInfo, datosPedido, pedidoStr, datosSorteo) {
     if (message?.type === 'text') {
       const incomingMessage = message.text.body.toLowerCase().trim();
-
+      console.log(`Mensaje recibido de ${message.from}: ${incomingMessage}`);
       if (this.isGreeting(incomingMessage)) {
         await this.sendWelcomeMessage(message.from, message.id, senderInfo);
         await this.sendWelcomeMenu(message.from);
