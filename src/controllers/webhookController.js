@@ -4,6 +4,7 @@ import messageHandler from '../services/messageHandler.js';
 import config from '../config/env.js';
 import crypto from "crypto";
 import fs from 'fs';
+import { CRM_MODE, forwardWebhook, toMetaMessage } from '../services/crmAdapter.js';
 
 const privateKey = config.PRIVATE_KEY;
 function isRequestSignatureValid(req) {
@@ -31,17 +32,42 @@ let datosSorteo = {};
 let datosPedido = {};
 let pedidoStr;
 class WebhookController {
+  /**
+   * Webhook de Meta (modo espejo). Se reenvía al CRM ANTES del filtro por
+   * número para que el CRM vea también estados y eventos de otros números
+   * conectados a la misma app.
+   */
   async handleIncoming(req, res) {
+    if (CRM_MODE !== 'gateway') forwardWebhook(req.body); // sin await: no frena la respuesta a Meta
+
     const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
     const recipientPhone = req.body.entry?.[0]?.changes[0]?.value?.metadata?.phone_number_id;
     // Solo responde si el mensaje es para el número de este bot
     if (recipientPhone !== process.env.BUSINESS_PHONE) {
       return res.sendStatus(200); // Ignora el mensaje
     }
-    
+
     const senderInfo = req.body.entry?.[0]?.changes[0]?.value?.contacts?.[0];
-    
-    if (message) {
+    res.sendStatus(200); // Meta reintenta si se tarda; Gemini puede tardar segundos
+    if (message) await this.dispatch(message, senderInfo);
+  }
+
+  /**
+   * Evento del CRM (modo gateway): el CRM ya guardó el mensaje y comprobó que
+   * el bot está activo. Se reconstruye el mensaje con el formato de Meta y se
+   * entra por la misma lógica de siempre.
+   */
+  async handleCrmEvent(event) {
+    if (event.event !== 'message.received' || !event.message) return;
+    // Si el bot tiene BUSINESS_PHONE, solo atiende su número (el CRM ya filtra por "Atiende", esto es doble seguro).
+    if (process.env.BUSINESS_PHONE && event.integration?.phoneNumberId && event.integration.phoneNumberId !== process.env.BUSINESS_PHONE) return;
+    const { message, senderInfo } = toMetaMessage(event);
+    await this.dispatch(message, senderInfo);
+  }
+
+  /** La lógica original de handleIncoming, sin cambios, reutilizada por los dos caminos. */
+  async dispatch(message, senderInfo) {
+    try {
       if (message?.type === 'interactive' && message?.interactive.type === 'button_reply') {
         await messageHandler.handleIncomingMessage(message, senderInfo, datosPedido, pedidoStr);
       }
@@ -66,8 +92,9 @@ class WebhookController {
       else {
         await messageHandler.handleIncomingMessage(message, senderInfo);
       }
+    } catch (error) {
+      console.error('Error procesando el mensaje:', error);
     }
-    res.sendStatus(200);
   }
 
 async handleFlow(req, res) {
