@@ -1,105 +1,46 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import config from "../config/env.js";
+import { askAi } from './crmAdapter.js';
 
-const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY);
+/**
+ * IA del chatbot — misma lógica que Mishabella (v2.12).
+ *
+ * El bot ya NO llama a Gemini con su propia clave ni lleva el contexto del
+ * negocio "quemado" en este archivo. Toda la inteligencia vive en el CRM
+ * (Chatbots → IA y conocimiento): instrucciones, preguntas frecuentes,
+ * archivos (PDF del menú, listas de precios…), sitio web rastreado, proveedor
+ * (Gemini o Claude) y el historial del chat. El CRM responde solo si la IA de
+ * ESTE chatbot está activa y con conocimiento cargado; si no, devuelve null y
+ * el bot contesta con su menú de siempre.
+ *
+ * Uso (misma firma que antes, más el teléfono del cliente):
+ *   const texto = await geminiService(mensaje, to);
+ *   response = texto ?? FALLBACK_MENU;
+ *
+ * Variables del bot: CRM_BASE_URL, CRM_API_KEY (ya las usa el adaptador).
+ * GEMINI_API_KEY ya no hace falta en el bot.
+ */
 
-// Almacenar sesiones de chat por usuario
-const userSessions = {};
+/** Texto cuando la IA no está disponible (apagada / sin conocimiento / CRM caído). */
+export const AI_UNAVAILABLE = 'Por ahora no puedo responder preguntas libres 🙈. Elige una opción del menú o escribe *Asesor* y una persona te atiende.';
 
-const systemPrompt = `Eres un asistente virtual especializado para la empresa ValleyTech ubicada en La Loma-Cesar (El Paso), Colombia. En ValleyTech impulsamos la transformación digital de restaurantes mediante soluciones de automatización conversacional. Nuestros chatbots especializados mejoran la experiencia de tus clientes, optimiza procesos y fortalece la relación. ValleyTech crea chatbots que automatizan la interacción con clientes mejorando la experiencia, aumentando ventas, y mejora la experiencia de atención al cliente. Ofrecemos un servicio tecnológico, el cual brinda servicio de atención al cliente automatizado, en servicios como pedidos en línea, reservaciones, y un plus, asistente que integran inteligencia artificial avanzada, para asistir e informar sobre el negocio y empresa. Ahora, la siguiente es la información que brindarás en caso de que te la soliciten: Queremos ayudar a todos los emprendedores 🏪 creándo Agentes Virtuales Automatizado para WhatsApp (Chatbots🤖) el cual, le ayudará a crecer exponencialmente en todo, sus ventas, calidad de atención al usuario, etc. Al chatbot solo tienen que escribirle un “hola” y les aparecerá un menú de opciones donde van a darle clic a la Opción de su preferencia.
-
-  INSTRUCCIONES IMPORTANTES:
-- Responde de manera corta, precisa y concisa.
-- La longitud del mensaje enviado NO supere los 600 caracteres.
-- Sé amable y usa emojis ocasionalmente para ser más humano.
-- Si no conoces la respuesta, disculpate diciendo algo como: "disculpa! no se la respuesta, pero seguiré aprendiendo para resolver todas tus inquietudes".
-- NUNCA digas: "No se me dio información sobre", "según la información proporcionada".
-- Importante: Cuando respondas con una lista, No pongas las palabras entre doble asterisco, ejemplo: opciones de Planes - **Plan Sencillo** - **Plan PRO** , etc. Si vas a poner en negrita una palabra, solo utiliza un asterisco de inicio y uno de final, así *Palabra*.
-- Si preguntan sobre información sensible (dueño, finanzas), responde de manera jocosa y persuasiva.
-- Aparenta ser un humano hablando naturalmente.
-- Recuerda el contexto de conversaciones anteriores.
-
-Más información al WhatsApp:📱 3225435157 Link 🔗 directo: https://api.whatsapp.com/send?phone=573225435157 💻 Página web: https://valley-tech.github.io/
-También pueden encontrarlo en la biografía de mi perfil.`;
-
-const geminiService = async (userMessage, userId) => {
+/**
+ * @param {string} message  Texto del cliente.
+ * @param {string} to       Número del cliente (wa_id). Sin él el CRM no puede
+ *                          ubicar la conversación ni su historial.
+ * @returns {Promise<string|null>} Respuesta lista para WhatsApp, o null.
+ */
+const geminiService = async (message, to) => {
+  const text = String(message ?? '').trim();
+  if (!text) return null;
+  if (!to) {
+    console.warn('[ia] geminiService(mensaje, to): falta el número del cliente; el CRM no puede responder sin él');
+    return null;
+  }
   try {
-    // Inicializar sesión del usuario si no existe
-    if (!userSessions[userId]) {
-      userSessions[userId] = {
-        history: [],
-        createdAt: new Date(),
-        lastMessage: new Date()
-      };
-    }
-
-    const session = userSessions[userId];
-    session.lastMessage = new Date();
-
-    // Crear modelo con streaming deshabilitado para mejor control
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3-flash-preview",
-      systemInstruction: systemPrompt
-    });
-
-    // Construir historial de chat
-    const chatHistory = session.history.map(msg => ({
-      role: msg.role,
-      parts: [{ text: msg.content }]
-    }));
-
-    // Iniciar chat con historial
-    const chat = model.startChat({
-      history: chatHistory,
-      generationConfig: {
-        maxOutputTokens: 1000,
-        temperature: 0.5,
-        topP: 0.9,
-        topK: 40
-      }
-    });
-
-    // Enviar mensaje
-    const result = await chat.sendMessage(userMessage);
-    const response = result.response.text();
-
-    // Guardar en historial
-    session.history.push({
-      role: "user",
-      content: userMessage
-    });
-
-    session.history.push({
-      role: "model",
-      content: response
-    });
-
-    // Mantener solo últimos 20 mensajes para no sobrecargar memoria
-    if (session.history.length > 20) {
-      session.history = session.history.slice(-20);
-    }
-
-    return response;
+    return await askAi(to, text);
   } catch (error) {
-    console.error("Error en Gemini:", error.message);
-    return "Disculpa, estoy teniendo problemas técnicos momentáneamente. Intenta nuevamente en unos segundos 🔧";
+    console.error('[ia] error pidiendo la respuesta al CRM:', error.message);
+    return null;
   }
 };
-
-// Función para limpiar sesiones antiguas (>1 hora)
-const cleanOldSessions = () => {
-  const now = new Date();
-  const ONE_HOUR = 60 * 60 * 1000;
-
-  Object.keys(userSessions).forEach(userId => {
-    const session = userSessions[userId];
-    if (now - session.lastMessage > ONE_HOUR) {
-      delete userSessions[userId];
-    }
-  });
-};
-
-// Ejecutar limpieza cada 30 minutos
-setInterval(cleanOldSessions, 30 * 60 * 1000);
 
 export default geminiService;
