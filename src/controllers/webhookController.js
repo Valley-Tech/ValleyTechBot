@@ -5,6 +5,7 @@ import config from '../config/env.js';
 import crypto from "crypto";
 import fs from 'fs';
 import { CRM_MODE, forwardWebhook, toMetaMessage } from '../services/crmAdapter.js';
+import { reportarFalla, entradaDe } from '../services/reportarFallas.js';
 
 const privateKey = config.PRIVATE_KEY;
 function isRequestSignatureValid(req) {
@@ -94,6 +95,8 @@ class WebhookController {
       }
     } catch (error) {
       console.error('Error procesando el mensaje:', error);
+      // v3.4: la falla aparece en el CRM, en el chat de este cliente, con su log.
+      reportarFalla(error, { to: message?.from, waMessageId: message?.id, step: 'atender el mensaje del cliente', entrada: entradaDe(message) });
     }
   }
 
@@ -112,6 +115,7 @@ async handleFlow(req, res) {
       decryptedRequest = decryptRequest(req.body, privateKey, config.PASSPHRASE);
     } catch (err) {
       console.error(err);
+      reportarFalla(err, { step: 'Flow con endpoint: descifrar la solicitud (PRIVATE_KEY / PASSPHRASE)', level: err?.statusCode === 421 ? 'warning' : 'error' });
       if (err instanceof FlowEndpointException) {
         return res.status(err.statusCode).send();
       }
@@ -134,6 +138,7 @@ async handleFlow(req, res) {
       res.send(encryptResponse(screenResponse, aesKeyBuffer, initialVectorBuffer));
     } catch (error) {
       console.error("Error en handleFlow:", error);
+      reportarFalla(error, { step: 'Flow con endpoint (handleFlow)' });
       res.status(500).json({ error: error.message });
     }
   };
@@ -147,6 +152,7 @@ async handleFlow(req, res) {
       res.status(200).send('Evento recibido');
     } catch (error) {
       console.error("Error procesando evento de Wompi:", error);
+      reportarFalla(error, { step: 'evento de pago de Wompi' });
       res.status(500).send('Error procesando evento');
     }
   }
