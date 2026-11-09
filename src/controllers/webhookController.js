@@ -94,7 +94,8 @@ class WebhookController {
         await messageHandler.handleIncomingMessage(message, senderInfo);
       }
     } catch (error) {
-      console.error('Error procesando el mensaje:', error);
+      // v3.5.4: sin volcar el objeto completo de axios (trae la clave X-Bot-Key en los headers)
+      console.error('Error procesando el mensaje:', error.message, error.response ? JSON.stringify(error.response.data) : '', error.stack?.split('\n').slice(1, 4).join(' | ') ?? '');
       // v3.4: la falla aparece en el CRM, en el chat de este cliente, con su log.
       reportarFalla(error, { to: message?.from, waMessageId: message?.id, step: 'atender el mensaje del cliente', entrada: entradaDe(message) });
     }

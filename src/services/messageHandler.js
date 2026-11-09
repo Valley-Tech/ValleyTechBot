@@ -1,6 +1,6 @@
 import whatsappService from './whatsappService.js';
 import appendToSheet from './googleSheetsService.js';
-import geminiAiService from './GeminiService.js';
+import geminiAiService, { AI_UNAVAILABLE } from './GeminiService.js';
 import { createWompiPaymentLink, getWompiTransactionStatus } from './wompiService.js';
 import { getAvailableNumbers, saveUserDataByNumber } from './googleSheetsService.js';
 
@@ -508,7 +508,8 @@ Para confirmar escribe "*Sí*"`;
     ];
 
     if (state.step === 'question') {
-      response = await geminiAiService(message);
+      // v3.5.4: la IA del CRM necesita el número del cliente; si no responde, texto de respaldo (nunca null)
+      response = (await geminiAiService(message, to)) ?? AI_UNAVAILABLE;
     }
 
     delete this.assistandState[to];

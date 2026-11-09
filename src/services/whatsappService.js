@@ -2,6 +2,11 @@ import sendToWhatsApp from "../services/httpRequest/sendToWhatsApp.js";
 
 class WhatsAppService {
   async sendMessage(to, body, messageId) {
+    // v3.5.4: nunca enviar un texto vacío (el CRM y Meta lo rechazan con 400)
+    if (typeof body !== 'string' || !body.trim()) {
+      console.warn(`[whatsapp] ${to}: texto vacío, no se envía`);
+      return null;
+    }
     const data = {
       messaging_product: 'whatsapp',
       to,
